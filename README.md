@@ -1,1 +1,57 @@
 # DeskNyanko
+# Lightweight GIF Viewer
+
+A tiny Windows GIF viewer written in C++.
+
+## Features
+
+* small executable (~200KB)
+* No .NET required
+* No runtime installation
+* Transparent GIF support
+* GPU rendering (Direct2D)
+* Drag & Drop GIF switching
+* Always-on-top window
+* Borderless window
+
+## Controls
+
+Left Click
+Move window
+
+Right Click
+Exit
+
+Drag & Drop
+Load another GIF
+
+## Build
+
+Open the project in **Visual Studio** and build.
+
+Requirements:
+
+* Windows 10 / 11
+* Visual Studio 2019 or later
+* Windows SDK
+
+## File structure
+
+Main.cpp
+Main application source code
+
+sample.gif
+Default GIF displayed at startup
+
+## Security note
+
+This project is open-source.
+The executable can be built directly from the provided source code.
+
+No network access.
+No background process.
+No installer.
+
+## License
+
+MIT License
