@@ -1,141 +1,151 @@
+/*
+Copyright (c) 2026 no-nyanko
+Licensed under the MIT License.
+See LICENSE file for details.
+*/
+
 #include <windows.h>
-#include <d2d1.h>
-#include <wincodec.h>
+#include <gdiplus.h>
+#include <shellapi.h>
 
-#pragma comment(lib,"d2d1.lib")
-#pragma comment(lib,"windowscodecs.lib")
+#pragma comment(lib,"gdiplus.lib")
 
-ID2D1Factory* factory = nullptr;
-ID2D1DCRenderTarget* renderTarget = nullptr;
+ULONG_PTR gdiplusToken;
 
-IWICImagingFactory* wicFactory = nullptr;
-IWICBitmapDecoder* decoder = nullptr;
-
-ID2D1Bitmap* bitmap = nullptr;
+Gdiplus::Image* gifImage = nullptr;
 
 UINT frameCount = 0;
 UINT currentFrame = 0;
+
+GUID dimensionGuid;
+
 UINT* delays = nullptr;
 
-UINT width = 0;
-UINT height = 0;
+int gifWidth = 0;
+int gifHeight = 0;
 
-GUID dimension;
-
-HBITMAP dibBitmap;
-void* bits;
-
-void ReleaseGif()
+void ClearGif()
 {
-    if (bitmap) { bitmap->Release(); bitmap = nullptr; }
-    if (decoder) { decoder->Release(); decoder = nullptr; }
-    if (delays) { free(delays); delays = nullptr; }
+    if (gifImage)
+    {
+        delete gifImage;
+        gifImage = nullptr;
+    }
+
+    if (delays)
+    {
+        free(delays);
+        delays = nullptr;
+    }
+
+    frameCount = 0;
+    currentFrame = 0;
 }
 
-void LoadFrame()
+bool LoadFrameDelays()
 {
-    IWICBitmapFrameDecode* frame = nullptr;
-    decoder->GetFrame(currentFrame, &frame);
+    UINT propSize = gifImage->GetPropertyItemSize(PropertyTagFrameDelay);
 
-    IWICFormatConverter* converter = nullptr;
-    wicFactory->CreateFormatConverter(&converter);
+    if (propSize == 0)
+    {
+        frameCount = 1;
 
-    converter->Initialize(
-        frame,
-        GUID_WICPixelFormat32bppPBGRA,
-        WICBitmapDitherTypeNone,
-        NULL,
-        0,
-        WICBitmapPaletteTypeCustom
-    );
+        delays = (UINT*)malloc(sizeof(UINT));
+        delays[0] = 10;
 
-    if (bitmap) bitmap->Release();
+        return true;
+    }
 
-    renderTarget->CreateBitmapFromWicBitmap(
-        converter,
-        NULL,
-        &bitmap
-    );
+    Gdiplus::PropertyItem* propItem = (Gdiplus::PropertyItem*)malloc(propSize);
 
-    converter->Release();
-    frame->Release();
-}
+    if (gifImage->GetPropertyItem(PropertyTagFrameDelay, propSize, propItem) )
+    {
+        free(propItem);
+        return false;
+    }
 
-void LoadGif(HWND hwnd, const wchar_t* path)
-{
-    ReleaseGif();
+    delays = (UINT*)malloc(frameCount * sizeof(UINT));
 
-    wicFactory->CreateDecoderFromFilename(
-        path,
-        NULL,
-        GENERIC_READ,
-        WICDecodeMetadataCacheOnLoad,
-        &decoder
-    );
+    memcpy(delays, propItem->value, frameCount * sizeof(UINT));
 
-    decoder->GetFrameCount(&frameCount);
-
-    IWICBitmapFrameDecode* frame;
-    decoder->GetFrame(0, &frame);
-    frame->GetSize(&width, &height);
-    frame->Release();
-
-    delays = (UINT*)malloc(sizeof(UINT) * frameCount);
+    free(propItem);
 
     for (UINT i = 0; i < frameCount; i++)
     {
-        IWICBitmapFrameDecode* f;
-        decoder->GetFrame(i, &f);
-
-        IWICMetadataQueryReader* reader;
-        f->GetMetadataQueryReader(&reader);
-
-        PROPVARIANT var;
-        PropVariantInit(&var);
-
-        reader->GetMetadataByName(
-            L"/grctlext/Delay",
-            &var
-        );
-
-        delays[i] = var.uiVal * 10;
-
-        PropVariantClear(&var);
-
-        reader->Release();
-        f->Release();
+        if (delays[i] == 0)
+            delays[i] = 10;
     }
 
-    LoadFrame();
-
-    SetWindowPos(
-        hwnd,
-        HWND_TOPMOST,
-        200,
-        200,
-        width,
-        height,
-        SWP_SHOWWINDOW
-    );
-
-    SetTimer(hwnd, 1, delays[0], NULL);
+    return true;
 }
 
-void Render(HWND hwnd)
+void LoadGifFromResource()
 {
-    HDC screen = GetDC(NULL);
-    HDC mem = CreateCompatibleDC(screen);
+    ClearGif();
+
+    HRSRC res = FindResource(NULL, MAKEINTRESOURCE(101), RT_RCDATA);
+    if (!res) return;
+
+    DWORD size = SizeofResource(NULL, res);
+
+    HGLOBAL resData = LoadResource(NULL, res);
+    if (!resData) return;
+
+    void* pData = LockResource(resData);
+
+    HGLOBAL hBuffer = GlobalAlloc(GMEM_MOVEABLE, size);
+
+    void* pBuffer = GlobalLock(hBuffer);
+
+    memcpy(pBuffer, pData, size);
+
+    GlobalUnlock(hBuffer);
+
+    IStream* stream;
+
+    if (CreateStreamOnHGlobal(hBuffer, TRUE, &stream) != S_OK)
+        return;
+
+    gifImage = Gdiplus::Image::FromStream(stream);
+
+    stream->Release();
+
+    if (!gifImage)
+        return;
+
+    gifWidth = gifImage->GetWidth();
+    gifHeight = gifImage->GetHeight();
+
+    GUID dimensionIDs[1];
+
+    gifImage->GetFrameDimensionsList(dimensionIDs, 1);
+
+    dimensionGuid = dimensionIDs[0];
+
+    frameCount = gifImage->GetFrameCount(&dimensionGuid);
+
+    LoadFrameDelays();
+}
+
+void DrawLayered(HWND hwnd)
+{
+    if (!gifImage) return;
+
+    HDC screenDC = GetDC(NULL);
+    HDC memDC = CreateCompatibleDC(screenDC);
 
     BITMAPINFO bmi = {};
+
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = width;
-    bmi.bmiHeader.biHeight = height;
+    bmi.bmiHeader.biWidth = gifWidth;
+    bmi.bmiHeader.biHeight = -gifHeight;
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
-    bmi.bmiHeader.biCompression = BI_RGB;
 
-    dibBitmap = CreateDIBSection(
-        screen,
+    void* bits;
+
+    HBITMAP bmp = CreateDIBSection(
+        screenDC,
         &bmi,
         DIB_RGB_COLORS,
         &bits,
@@ -143,53 +153,77 @@ void Render(HWND hwnd)
         0
     );
 
-    SelectObject(mem, dibBitmap);
+    HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, bmp);
 
-    RECT rc = { 0,0,(LONG)width,(LONG)height };
+    Gdiplus::Graphics g(memDC);
 
-    renderTarget->BindDC(mem, &rc);
+    g.Clear(Gdiplus::Color(0, 0, 0, 0));
 
-    renderTarget->BeginDraw();
+    g.DrawImage(gifImage, 0, 0, gifWidth, gifHeight);
 
-    renderTarget->Clear(
-        D2D1::ColorF(0, 0)
-    );
+    RECT rc;
 
-    if (bitmap)
-        renderTarget->DrawBitmap(bitmap);
+    GetWindowRect(hwnd, &rc);
 
-    renderTarget->EndDraw();
+    POINT ptPos = { rc.left, rc.top };
 
-    POINT ptPos;
-    RECT wr;
-    GetWindowRect(hwnd, &wr);
+    SIZE sizeWindow = { gifWidth,gifHeight };
 
-    ptPos.x = wr.left;
-    ptPos.y = wr.top;
-
-    SIZE sizeWindow = { (LONG)width,(LONG)height };
     POINT ptSrc = { 0,0 };
 
     BLENDFUNCTION blend = {};
+
     blend.BlendOp = AC_SRC_OVER;
     blend.SourceConstantAlpha = 255;
     blend.AlphaFormat = AC_SRC_ALPHA;
 
     UpdateLayeredWindow(
         hwnd,
-        screen,
+        screenDC,
         &ptPos,
         &sizeWindow,
-        mem,
+        memDC,
         &ptSrc,
         0,
         &blend,
         ULW_ALPHA
     );
 
-    DeleteObject(dibBitmap);
-    DeleteDC(mem);
-    ReleaseDC(NULL, screen);
+    SelectObject(memDC, oldBmp);
+
+    DeleteObject(bmp);
+    DeleteDC(memDC);
+
+    ReleaseDC(NULL, screenDC);
+}
+
+void LoadGif(HWND hwnd, const wchar_t* path)
+{
+    ClearGif();
+
+    gifImage = Gdiplus::Image::FromFile(path);
+
+    if (!gifImage)
+        return;
+
+    gifWidth = gifImage->GetWidth();
+    gifHeight = gifImage->GetHeight();
+
+    SetWindowPos(hwnd, HWND_TOPMOST, 100, 100, gifWidth, gifHeight, SWP_SHOWWINDOW);
+
+    GUID dimensionIDs[1];
+
+    gifImage->GetFrameDimensionsList(dimensionIDs, 1);
+
+    dimensionGuid = dimensionIDs[0];
+
+    frameCount = gifImage->GetFrameCount(&dimensionGuid);
+
+    LoadFrameDelays();
+
+    currentFrame = 0;
+
+    SetTimer(hwnd, 1, delays[0] * 10, NULL);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -198,46 +232,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
 
     case WM_CREATE:
-    {
+
         DragAcceptFiles(hwnd, TRUE);
 
-        D2D1CreateFactory(
-            D2D1_FACTORY_TYPE_SINGLE_THREADED,
-            &factory
-        );
+        LoadGifFromResource();
 
-        D2D1_RENDER_TARGET_PROPERTIES props =
-            D2D1::RenderTargetProperties(
-                D2D1_RENDER_TARGET_TYPE_DEFAULT,
-                D2D1::PixelFormat(
-                    DXGI_FORMAT_B8G8R8A8_UNORM,
-                    D2D1_ALPHA_MODE_PREMULTIPLIED
-                )
-            );
+        SetWindowPos(hwnd, HWND_TOPMOST, 200, 200, gifWidth, gifHeight, 0);
 
-        factory->CreateDCRenderTarget(
-            &props,
-            &renderTarget
-        );
+        if (delays)
+            SetTimer(hwnd, 1, delays[0] * 10, NULL);
 
-        CoInitialize(NULL);
-
-        CoCreateInstance(
-            CLSID_WICImagingFactory,
-            NULL,
-            CLSCTX_INPROC_SERVER,
-            IID_PPV_ARGS(&wicFactory)
-        );
-
-        wchar_t path[MAX_PATH];
-        GetModuleFileName(NULL, path, MAX_PATH);
-
-        wchar_t* p = wcsrchr(path, L'\\');
-        if (p) wcscpy_s(p + 1, MAX_PATH, L"sample.gif");
-
-        LoadGif(hwnd, path);
-    }
-    break;
+        break;
 
     case WM_DROPFILES:
     {
@@ -253,14 +258,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
     case WM_TIMER:
 
-        currentFrame++;
-        if (currentFrame >= frameCount)
-            currentFrame = 0;
+        if (gifImage && frameCount > 0)
+        {
+            currentFrame = (currentFrame + 1) % frameCount;
 
-        LoadFrame();
-        Render(hwnd);
+            gifImage->SelectActiveFrame(&dimensionGuid, currentFrame);
 
-        SetTimer(hwnd, 1, delays[currentFrame], NULL);
+            DrawLayered(hwnd);
+
+            SetTimer(hwnd, 1, delays[currentFrame] * 10, NULL);
+        }
 
         break;
 
@@ -278,15 +285,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
     case WM_DESTROY:
 
-        ReleaseGif();
+        KillTimer(hwnd, 1);
 
-        if (renderTarget) renderTarget->Release();
-        if (factory) factory->Release();
-        if (wicFactory) wicFactory->Release();
+        ClearGif();
+
+        Gdiplus::GdiplusShutdown(gdiplusToken);
 
         PostQuitMessage(0);
 
         break;
+
     }
 
     return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -294,6 +302,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
+
+    Gdiplus::GdiplusStartupInput gdiplusStartupInput;
+
+    Gdiplus::GdiplusStartup(
+        &gdiplusToken,
+        &gdiplusStartupInput,
+        NULL
+    );
+
     WNDCLASS wc = {};
 
     wc.lpfnWndProc = WndProc;
@@ -310,7 +327,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         200,
         200,
         300,
-        300,
+        200,
         NULL,
         NULL,
         hInstance,
@@ -329,5 +346,3 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     return 0;
 }
-
-//no-nyanko
