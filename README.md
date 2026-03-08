@@ -1,5 +1,7 @@
 # DeskNyanko
+
 軽量Gifアニメーション表示ツール
+
 背景透過してるのでデスクトップマスコットとして使えます
 
 # Lightweight GIF Viewer
