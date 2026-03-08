@@ -53,12 +53,15 @@ Default GIF displayed at startup
 ## Security note
 
 This project is open-source.
+
 The executable can be built directly from the provided source code.
 
 No network access.
 No background process.
 No installer.
 
+
+
 ## License
 
-MIT License
+This project is licensed under the MIT License.
