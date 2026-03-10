@@ -1,4 +1,10 @@
-﻿using System;
+/*
+Copyright (c) 2026 no-nyanko
+Licensed under the MIT License.
+See LICENSE file for details.
+*/
+
+using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -311,4 +317,5 @@ static int[] delays = Array.Empty<int>();
         int size);
 
     [DllImport("shell32.dll")] static extern void DragFinish(IntPtr hDrop);
+
 }
