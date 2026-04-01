@@ -28,6 +28,7 @@ class DeskNyanko
     const int WM_MOUSEMOVE = 0x200;
     const int WM_RBUTTONDOWN = 0x204;
     const int WM_DROPFILES = 0x233;
+    const int WM_MOUSEWHEEL = 0x020A;
 
     const int ULW_ALPHA = 2;
 
@@ -38,6 +39,7 @@ class DeskNyanko
     static int dragY;
     static Image gif;
     static FrameDimension dimension;
+    static float scale = 1.0f;
 
     static int frame;
 static int frameCount = 1;
@@ -130,7 +132,16 @@ static int[] delays = Array.Empty<int>();
     {
         gif.SelectActiveFrame(dimension, frame);
 
-        using Bitmap bmp = new(gif);
+int w = (int)(gif.Width * scale);
+int h = (int)(gif.Height * scale);
+
+using Bitmap bmp = new(w, h);
+
+using (Graphics g = Graphics.FromImage(bmp))
+{
+    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+    g.DrawImage(gif, 0, 0, w, h);
+}
 
         IntPtr screen = GetDC(IntPtr.Zero);
         IntPtr mem = CreateCompatibleDC(screen);
@@ -138,7 +149,7 @@ static int[] delays = Array.Empty<int>();
         IntPtr hBitmap = bmp.GetHbitmap(Color.FromArgb(0));
         IntPtr old = SelectObject(mem, hBitmap);
 
-        SIZE size = new(bmp.Width, bmp.Height);
+        SIZE size = new(w, h);
         POINT src = new(0, 0);
 
         GetWindowRect(hwnd, out RECT rect);
@@ -220,6 +231,23 @@ static int[] delays = Array.Empty<int>();
                 }
 
                 DragFinish(wParam);
+
+                break;
+
+            case WM_MOUSEWHEEL:
+
+                int delta = (short)((long)wParam >> 16);
+
+                if (delta > 0)
+                    scale += 0.1f;
+                else
+                    scale -= 0.1f;
+
+                if (scale < 0.2f) scale = 0.2f;
+                if (scale > 5.0f) scale = 5.0f;
+
+                Draw();
+
 
                 break;
         }
@@ -317,5 +345,4 @@ static int[] delays = Array.Empty<int>();
         int size);
 
     [DllImport("shell32.dll")] static extern void DragFinish(IntPtr hDrop);
-
 }
