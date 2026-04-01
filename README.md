@@ -2,11 +2,11 @@
 
 軽量Gifアニメーション表示ツール　
 
-ChatGPTにコードを書いてもらって
+ChatGPTにコードを書いてもらって<br>
 対話しながら作成しました
 
-Gif想定して作ったけどpng/jpg/bmpも
-問題なく表示されてます
+Gif想定して作ったけどpng/jpg/bmpも<br>
+問題なく表示されてます<br>
 WindowsAPIが優秀なのかな？
 
 
