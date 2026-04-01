@@ -26,7 +26,7 @@ class DeskNyanko
     const int WM_LBUTTONDOWN = 0x201;
     const int WM_LBUTTONUP = 0x202;
     const int WM_MOUSEMOVE = 0x200;
-    const int WM_RBUTTONDOWN = 0x204;
+    const int WM_RBUTTONUP = 0x205;
     const int WM_DROPFILES = 0x233;
     const int WM_MOUSEWHEEL = 0x020A;
 
@@ -201,10 +201,8 @@ using (Graphics g = Graphics.FromImage(bmp))
                 SendMessage(hwnd, 0xA1, (IntPtr)2, IntPtr.Zero);
                 break;
 
-            case WM_RBUTTONDOWN:
-
+            case WM_RBUTTONUP:
                 PostQuitMessage(0);
-
                 break;
 
             case WM_DROPFILES:
