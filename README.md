@@ -67,7 +67,7 @@ Requirements:
 Main.cpp
 Main application source code
 
-sample.gif
+nyanko.gif
 Default GIF displayed at startup
 
 ## Security note
